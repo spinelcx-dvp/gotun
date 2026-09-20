@@ -42,6 +42,7 @@ function parseVlessUrl(url) {
     alpn: params.get('alpn') || '',
     fp: params.get('fp') || '',
     allowInsecure: params.get('allowInsecure') === '1' || params.get('allowInsecure') === 'true',
+    pinnedPeerCertSha256: params.get('pinnedPeerCertSha256') || '',
   };
 }
 
@@ -54,7 +55,11 @@ function buildVlessUrl(cfg) {
   if (cfg.path) params.set('path', cfg.path);
   if (cfg.alpn) params.set('alpn', cfg.alpn);
   if (cfg.fp) params.set('fp', cfg.fp);
-  if (cfg.allowInsecure) params.set('allowInsecure', '1');
+
+  // ✅ جایگزین allowInsecure با pinnedPeerCertSha256
+  if (cfg.pinnedPeerCertSha256) {
+    params.set('pinnedPeerCertSha256', cfg.pinnedPeerCertSha256);
+  }
 
   const name = cfg.name ? `#${encodeURIComponent(cfg.name)}` : '';
   const hostPart = cfg.host.includes(':') ? `[${cfg.host}]` : cfg.host;
@@ -69,6 +74,7 @@ function buildSpoofedConfig(original, opts) {
     path,
     uuid,
     tlsEnabled,
+    pinnedPeerCertSha256,
   } = opts;
 
   return {
@@ -81,7 +87,7 @@ function buildSpoofedConfig(original, opts) {
     sni: tlsEnabled ? fakeDomain : '',
     host_header: fakeDomain,
     path: path || '/ws',
-    allowInsecure: tlsEnabled,
+    pinnedPeerCertSha256: tlsEnabled ? pinnedPeerCertSha256 : '',
   };
 }
 
