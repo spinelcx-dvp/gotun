@@ -56,7 +56,6 @@ function buildVlessUrl(cfg) {
   if (cfg.alpn) params.set('alpn', cfg.alpn);
   if (cfg.fp) params.set('fp', cfg.fp);
 
-  // ✅ جایگزین allowInsecure با pinnedPeerCertSha256
   if (cfg.pinnedPeerCertSha256) {
     params.set('pinnedPeerCertSha256', cfg.pinnedPeerCertSha256);
   }
