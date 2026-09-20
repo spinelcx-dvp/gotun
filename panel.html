@@ -1,0 +1,226 @@
+<!doctype html>
+<html lang="fa" dir="rtl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>GhostSNI Panel</title>
+<style>
+  * { box-sizing: border-box; }
+  body {
+    font-family: system-ui, -apple-system, sans-serif;
+    background: #0f1117;
+    color: #e6e8ee;
+    margin: 0; padding: 24px;
+    line-height: 1.6;
+  }
+  .container { max-width: 900px; margin: 0 auto; }
+  h1 { font-size: 24px; margin: 0 0 4px; }
+  .sub { color: #8b90a0; margin-bottom: 24px; font-size: 14px; }
+  .card {
+    background: #181b24;
+    border: 1px solid #252a36;
+    border-radius: 10px;
+    padding: 18px;
+    margin-bottom: 16px;
+  }
+  .card h3 { margin: 0 0 14px; font-size: 14px; color: #a8adbd; font-weight: 600; }
+  label { display: block; font-size: 13px; color: #a8adbd; margin-bottom: 6px; }
+  input, select, textarea {
+    width: 100%;
+    background: #0f1117;
+    border: 1px solid #2a3040;
+    color: #e6e8ee;
+    padding: 10px 12px;
+    border-radius: 8px;
+    font-family: ui-monospace, monospace;
+    font-size: 13px;
+    outline: none;
+  }
+  input:focus, select:focus, textarea:focus { border-color: #4c7dff; }
+  textarea { resize: vertical; min-height: 90px; }
+  button {
+    background: #4c7dff;
+    color: white;
+    border: none;
+    padding: 10px 20px;
+    border-radius: 8px;
+    font-size: 14px;
+    font-weight: 600;
+    cursor: pointer;
+    margin-top: 12px;
+  }
+  button:hover { background: #3a6ae8; }
+  button:disabled { background: #2a3040; cursor: not-allowed; }
+  button.ghost { background: #2a3040; }
+  button.ghost:hover { background: #3a4250; }
+  .row { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+  .row3 { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 12px; }
+  .out {
+    background: #0a0c11;
+    border: 1px solid #2a3040;
+    border-radius: 8px;
+    padding: 14px;
+    font-family: ui-monospace, monospace;
+    font-size: 12px;
+    word-break: break-all;
+    white-space: pre-wrap;
+    margin-top: 8px;
+    color: #7ee787;
+  }
+  .err { color: #ff7b72; font-size: 13px; margin-top: 8px; min-height: 18px; }
+  .note {
+    background: #2a1f0a;
+    border: 1px solid #4a3a1a;
+    color: #ffd479;
+    padding: 10px 14px;
+    border-radius: 8px;
+    font-size: 12px;
+    margin-top: 12px;
+  }
+  .actions { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 12px; }
+  .actions button { margin-top: 0; padding: 8px 14px; font-size: 13px; }
+  #qr { text-align: center; margin-top: 12px; }
+  #qr img { background: white; padding: 12px; border-radius: 8px; }
+  .badge {
+    display: inline-block;
+    background: #1f2a1a;
+    color: #7ee787;
+    font-size: 11px;
+    padding: 2px 8px;
+    border-radius: 4px;
+  }
+  .checkbox-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 10px;
+    font-size: 13px;
+  }
+  .checkbox-row input[type=checkbox] {
+    width: auto;
+    accent-color: #4c7dff;
+  }
+  .domain-list {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    margin-top: 8px;
+  }
+  .domain-chip {
+    background: #1f2433;
+    border: 1px solid #2f364a;
+    padding: 4px 10px;
+    border-radius: 20px;
+    font-size: 12px;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-family: ui-monospace, monospace;
+  }
+  .domain-chip button {
+    background: transparent;
+    border: none;
+    color: #ff7b72;
+    margin: 0;
+    padding: 0;
+    width: 16px;
+    height: 16px;
+    line-height: 1;
+    cursor: pointer;
+    font-size: 14px;
+  }
+  .domain-chip.active {
+    background: #1a3a1a;
+    border-color: #2a5a2a;
+    color: #7ee787;
+  }
+  select[multiple] {
+    min-height: 120px;
+    font-family: ui-monospace, monospace;
+  }
+  .hint { font-size: 11px; color: #6b7280; margin-top: 4px; }
+</style>
+</head>
+<body>
+<div class="container">
+  <h1>GhostSNI</h1>
+  <div class="sub">پنل جعل SNI/Host برای کانفیگ‌های VLESS+WS+TLS</div>
+
+  <!-- تنظیمات سرور -->
+  <div class="card">
+    <h3>⚙️ تنظیمات سرور</h3>
+
+    <div class="checkbox-row">
+      <input type="checkbox" id="fakeResponse">
+      <label for="fakeResponse" style="margin:0">پاسخ واقعی برای SNI نامعتبر (anti active probing)</label>
+    </div>
+
+    <div class="checkbox-row">
+      <input type="checkbox" id="tlsEnabled">
+      <label for="tlsEnabled" style="margin:0">فعال بودن TLS (اگه خاموش باشه، بدون TLS spoof می‌کنه)</label>
+    </div>
+
+    <div class="checkbox-row">
+      <input type="checkbox" id="fragmentHello">
+      <label for="fragmentHello" style="margin:0">Fragment کردن ClientHello (تجربی)</label>
+    </div>
+
+    <div style="margin-top:14px">
+      <label>دامنه‌های جعلی مجاز</label>
+      <div class="domain-list" id="domainList"></div>
+      <div class="row" style="margin-top:10px">
+        <input id="newDomain" placeholder="مثلاً: www.wikipedia.org">
+        <button class="ghost" onclick="addDomain()" style="margin:0">+ افزودن دامنه</button>
+      </div>
+      <div class="hint">دامنه‌ها اینجا فقط روی سرور مجاز می‌شن. یکی رو از لیست پایین انتخاب کن.</div>
+    </div>
+  </div>
+
+  <!-- کانفیگ ساز -->
+  <div class="card">
+    <h3>🔧 ساخت کانفیگ Spoof شده</h3>
+
+    <label>کانفیگ VLESS اصلی (ورودی)</label>
+    <textarea id="input" placeholder="vless://uuid@host:port?type=ws&security=tls&sni=...&host=...&path=..."></textarea>
+
+    <div class="row" style="margin-top:12px">
+      <div>
+        <label>دامنه جعلی (SNI/Host)</label>
+        <select id="fakeDomain"></select>
+      </div>
+      <div>
+        <label>دامنه عمومی این سرور</label>
+        <input id="publicHost" placeholder="auto-detected">
+        <div class="hint">خودکار از آدرس همین صفحه پر می‌شه.</div>
+      </div>
+    </div>
+
+    <div class="row" style="margin-top:12px">
+      <div>
+        <label>مسیر WS</label>
+        <input id="wsPath" value="/ws">
+      </div>
+      <div>
+        <label>پورت عمومی</label>
+        <input id="publicPort" value="443" type="number">
+      </div>
+    </div>
+
+    <button id="go">جعل کن</button>
+    <div id="error" class="err"></div>
+  </div>
+
+  <!-- خروجی -->
+  <div class="card" id="result" style="display:none">
+    <div><span class="badge">خروجی</span></div>
+    <label style="margin-top:12px">کانفیگ Spoof شده</label>
+    <div id="out" class="out"></div>
+
+    <div class="actions">
+      <button class="ghost" onclick="copyOut()">کپی</button>
+      <button class="ghost" onclick="showQR()">نمایش QR</button>
+    </div>
+
+    <div id="qr"></div>
+
+    <div class="
