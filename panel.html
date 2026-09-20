@@ -54,7 +54,6 @@
   button.ghost { background: #2a3040; }
   button.ghost:hover { background: #3a4250; }
   .row { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
-  .row3 { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 12px; }
   .out {
     background: #0a0c11;
     border: 1px solid #2a3040;
@@ -180,7 +179,6 @@
   <h1>GhostSNI</h1>
   <div class="sub">پنل جعل SNI/Host برای کانفیگ‌های VLESS+WS+TLS</div>
 
-  <!-- تنظیمات سرور -->
   <div class="card">
     <h3>⚙️ تنظیمات سرور</h3>
 
@@ -210,7 +208,6 @@
     </div>
   </div>
 
-  <!-- کانفیگ ساز -->
   <div class="card">
     <h3>🔧 ساخت کانفیگ Spoof شده</h3>
 
@@ -244,7 +241,6 @@
     <div id="error" class="err"></div>
   </div>
 
-  <!-- خروجی -->
   <div class="card" id="result" style="display:none">
     <div><span class="badge">خروجی</span></div>
 
@@ -291,7 +287,6 @@ let state = {
   allowedUuids: [],
 };
 
-// ============ Toast ============
 function toast(msg) {
   const t = $('toast');
   t.textContent = msg;
@@ -300,7 +295,6 @@ function toast(msg) {
   window.__toastTimer = setTimeout(() => t.classList.remove('show'), 1800);
 }
 
-// ============ بارگذاری state ============
 async function loadState() {
   try {
     const r = await fetch('/api/state');
@@ -318,7 +312,6 @@ async function loadState() {
   $('publicHost').value = window.location.hostname;
 }
 
-// ============ ذخیره state ============
 async function saveState(patch) {
   Object.assign(state, patch);
   try {
@@ -330,7 +323,6 @@ async function saveState(patch) {
   } catch (e) {}
 }
 
-// ============ رندر دامنه‌ها ============
 function renderDomains() {
   const list = $('domainList');
   list.innerHTML = '';
@@ -376,12 +368,10 @@ function removeDomain(idx) {
   saveState({ fakeDomains: state.fakeDomains });
 }
 
-// ============ چک‌باکس‌ها ============
 $('fakeResponse').onchange = e => saveState({ fakeResponse: e.target.checked });
 $('tlsEnabled').onchange = e => saveState({ tlsEnabled: e.target.checked });
 $('fragmentHello').onchange = e => saveState({ fragmentHello: e.target.checked });
 
-// ============ جعل ============
 $('go').onclick = async () => {
   $('error').textContent = '';
   $('result').style.display = 'none';
@@ -423,13 +413,12 @@ $('go').onclick = async () => {
       $('fpSection').style.display = 'block';
       $('note').className = 'note';
       $('note').innerHTML = `
-        ⚠️ در کلاینت (v2rayNG / NekoBox / Sing-box) باید گواهی را pin کنی.<br>
-        اثر انگشت <code>pinnedPeerCertSha256</code> در کانفیگ قرار داده شده.<br>
-        اگه کلاینت از <code>allowInsecure</code> استفاده می‌کنه، ممکنه نسخه‌های جدید reject کنن — از fingerprint استفاده کن.
+        ⚠️ در کلاینت باید گواهی را pin کنی.<br>
+        اثر انگشت <code>pinnedPeerCertSha256</code> در کانفیگ قرار داده شده.
       `;
     } else if (!tlsEnabled) {
       $('note').className = 'note ok';
-      $('note').innerHTML = `ℹ️ حالت بدون TLS فعال است. اتصال بدون لایه امن انجام می‌شه.`;
+      $('note').innerHTML = `ℹ️ حالت بدون TLS فعال است.`;
     } else {
       $('note').className = 'note';
       $('note').innerHTML = `⚠️ اثر انگشت گواهی دریافت نشد.`;
@@ -444,7 +433,6 @@ $('go').onclick = async () => {
   }
 };
 
-// ============ کپی ============
 function copyOut() {
   if (!window.__out) return;
   navigator.clipboard.writeText(window.__out);
@@ -457,7 +445,6 @@ function copyFp() {
   toast('اثر انگشت کپی شد');
 }
 
-// ============ QR ============
 function showQR() {
   const url = window.__out || '';
   if (!url) return;
