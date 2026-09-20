@@ -223,4 +223,173 @@
 
     <div id="qr"></div>
 
-    <div class="
+    <div class="note" id="note"></div>
+  </div>
+</div>
+
+<script>
+const $ = id => document.getElementById(id);
+
+// پیش‌فرض‌ها
+const DEFAULT_DOMAINS = [
+  'chatgpt.com',
+  'www.microsoft.com',
+  'www.bing.com',
+  'www.apple.com',
+  'www.cloudflare.com',
+  'www.google.com',
+];
+
+let state = {
+  fakeDomains: [...DEFAULT_DOMAINS],
+  fakeResponse: true,
+  tlsEnabled: true,
+  fragmentHello: false,
+  defaultWsPath: '/ws',
+  allowedUuids: [],
+};
+
+// ============ بارگذاری state از سرور ============
+async function loadState() {
+  try {
+    const r = await fetch('/api/state');
+    const j = await r.json();
+    state = { ...state, ...j };
+  } catch (e) {
+    console.warn('state load failed, using defaults');
+  }
+  renderDomains();
+  renderFakeSelect();
+  $('fakeResponse').checked = state.fakeResponse;
+  $('tlsEnabled').checked = state.tlsEnabled;
+  $('fragmentHello').checked = state.fragmentHello;
+  $('wsPath').value = state.defaultWsPath || '/ws';
+  $('publicHost').value = window.location.hostname;
+}
+
+// ============ ذخیره state روی سرور ============
+async function saveState(patch) {
+  Object.assign(state, patch);
+  try {
+    await fetch('/api/state', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(state),
+    });
+  } catch (e) {}
+}
+
+// ============ رندر لیست دامنه‌ها ============
+function renderDomains() {
+  const list = $('domainList');
+  list.innerHTML = '';
+  state.fakeDomains.forEach((d, idx) => {
+    const chip = document.createElement('div');
+    chip.className = 'domain-chip';
+    chip.innerHTML = `
+      <span>${d}</span>
+      <button title="حذف" onclick="removeDomain(${idx})">×</button>
+    `;
+    list.appendChild(chip);
+  });
+}
+
+function renderFakeSelect() {
+  const sel = $('fakeDomain');
+  const current = sel.value;
+  sel.innerHTML = '';
+  state.fakeDomains.forEach(d => {
+    const o = document.createElement('option');
+    o.value = d;
+    o.textContent = d;
+    sel.appendChild(o);
+  });
+  if (current && state.fakeDomains.includes(current)) sel.value = current;
+}
+
+function addDomain() {
+  const v = $('newDomain').value.trim().toLowerCase();
+  if (!v) return;
+  if (state.fakeDomains.includes(v)) return;
+  state.fakeDomains.push(v);
+  $('newDomain').value = '';
+  renderDomains();
+  renderFakeSelect();
+  saveState({ fakeDomains: state.fakeDomains });
+}
+
+function removeDomain(idx) {
+  state.fakeDomains.splice(idx, 1);
+  renderDomains();
+  renderFakeSelect();
+  saveState({ fakeDomains: state.fakeDomains });
+}
+
+// ============ چک‌باکس‌ها ============
+$('fakeResponse').onchange = e => saveState({ fakeResponse: e.target.checked });
+$('tlsEnabled').onchange = e => saveState({ tlsEnabled: e.target.checked });
+$('fragmentHello').onchange = e => saveState({ fragmentHello: e.target.checked });
+
+// ============ دکمه جعل ============
+$('go').onclick = async () => {
+  $('error').textContent = '';
+  $('result').style.display = 'none';
+  $('qr').innerHTML = '';
+
+  const url = $('input').value.trim();
+  const fakeDomain = $('fakeDomain').value;
+  const publicHost = $('publicHost').value.trim();
+  const wsPath = $('wsPath').value.trim() || '/ws';
+  const tlsEnabled = $('tlsEnabled').checked;
+
+  if (!url) return $('error').textContent = 'کانفیگ را وارد کنید';
+  if (!fakeDomain) return $('error').textContent = 'دامنه جعلی انتخاب کنید';
+  if (!publicHost) return $('error').textContent = 'دامنه عمومی را وارد کنید';
+
+  $('go').disabled = true;
+  $('go').textContent = 'در حال پردازش...';
+
+  try {
+    const r = await fetch('/api/spoof', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ url, fakeDomain, publicHost, tlsEnabled, wsPath }),
+    });
+    const j = await r.json();
+
+    if (!j.ok) {
+      $('error').textContent = j.error || 'خطا';
+      return;
+    }
+
+    $('out').textContent = j.url;
+    $('note').innerHTML = tlsEnabled
+      ? `⚠️ در کلاینت <b>allowInsecure=true</b> را فعال کنید (گواهی TLS خودامضا است). سرور: <b>${publicHost}</b>`
+      : `ℹ️ حالت بدون TLS فعال است.`;
+    $('result').style.display = 'block';
+    window.__out = j.url;
+  } catch (e) {
+    $('error').textContent = e.message;
+  } finally {
+    $('go').disabled = false;
+    $('go').textContent = 'جعل کن';
+  }
+};
+
+function copyOut() {
+  navigator.clipboard.writeText(window.__out || '');
+}
+
+function showQR() {
+  const url = window.__out || '';
+  if (!url) return;
+  const img = document.createElement('img');
+  img.src = 'https://api.qrserver.com/v1/create-qr-code/?size=240x240&data=' + encodeURIComponent(url);
+  $('qr').innerHTML = '';
+  $('qr').appendChild(img);
+}
+
+loadState();
+</script>
+</body>
+</html>
