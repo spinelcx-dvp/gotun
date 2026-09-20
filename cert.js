@@ -57,9 +57,14 @@ function generateSelfSigned(domain) {
     );
     const key = fs.readFileSync(`${tmp}.key`, 'utf8');
     const cert = fs.readFileSync(`${tmp}.crt`, 'utf8');
+
+    // ✅ محاسبه اثر انگشت SHA256 (فرمت hex بدون دو نقطه)
+    const certDer = fs.readFileSync(`${tmp}.crt`);
+    const fingerprint = crypto.createHash('sha256').update(certDer).digest('hex');
+
     fs.unlinkSync(`${tmp}.key`);
     fs.unlinkSync(`${tmp}.crt`);
-    return { key, cert };
+    return { key, cert, fingerprint };
   } catch (e) {
     throw new Error(`self-signed failed: ${e.message}`);
   }
@@ -78,6 +83,7 @@ async function getCert(domain) {
   const result = {
     key: self.key,
     cert: self.cert,
+    fingerprint: self.fingerprint, // ✅ اثر انگشت
     realChain: realChain ? realChain.chain : null,
     domain,
     fetchedAt: Date.now(),
