@@ -13,6 +13,7 @@ async function getSpoofContext(sni) {
     sni,
     cert: cert.cert,
     key: cert.key,
+    fingerprint: cert.fingerprint,
     realChain: cert.realChain,
   };
 }
