@@ -76,6 +76,20 @@
     border-radius: 8px;
     font-size: 12px;
     margin-top: 12px;
+    line-height: 1.8;
+  }
+  .note.ok {
+    background: #0f2a1a;
+    border-color: #1a4a2a;
+    color: #7ee787;
+  }
+  .note code {
+    background: #0a0c11;
+    padding: 2px 6px;
+    border-radius: 4px;
+    font-size: 11px;
+    color: #ffd479;
+    word-break: break-all;
   }
   .actions { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 12px; }
   .actions button { margin-top: 0; padding: 8px 14px; font-size: 13px; }
@@ -99,7 +113,9 @@
   .checkbox-row input[type=checkbox] {
     width: auto;
     accent-color: #4c7dff;
+    cursor: pointer;
   }
+  .checkbox-row label { margin: 0; cursor: pointer; }
   .domain-list {
     display: flex;
     flex-wrap: wrap;
@@ -129,16 +145,34 @@
     cursor: pointer;
     font-size: 14px;
   }
-  .domain-chip.active {
-    background: #1a3a1a;
-    border-color: #2a5a2a;
-    color: #7ee787;
-  }
-  select[multiple] {
-    min-height: 120px;
-    font-family: ui-monospace, monospace;
-  }
   .hint { font-size: 11px; color: #6b7280; margin-top: 4px; }
+  .fp-box {
+    background: #0a0c11;
+    border: 1px solid #2a3040;
+    border-radius: 8px;
+    padding: 10px 12px;
+    font-family: ui-monospace, monospace;
+    font-size: 11px;
+    color: #79c0ff;
+    word-break: break-all;
+    margin-top: 8px;
+  }
+  .toast {
+    position: fixed;
+    bottom: 24px;
+    left: 50%;
+    transform: translateX(-50%);
+    background: #4c7dff;
+    color: white;
+    padding: 10px 20px;
+    border-radius: 8px;
+    font-size: 13px;
+    opacity: 0;
+    transition: opacity 0.3s;
+    pointer-events: none;
+    z-index: 999;
+  }
+  .toast.show { opacity: 1; }
 </style>
 </head>
 <body>
@@ -152,17 +186,17 @@
 
     <div class="checkbox-row">
       <input type="checkbox" id="fakeResponse">
-      <label for="fakeResponse" style="margin:0">پاسخ واقعی برای SNI نامعتبر (anti active probing)</label>
+      <label for="fakeResponse">پاسخ واقعی برای SNI نامعتبر (anti active probing)</label>
     </div>
 
     <div class="checkbox-row">
       <input type="checkbox" id="tlsEnabled">
-      <label for="tlsEnabled" style="margin:0">فعال بودن TLS (اگه خاموش باشه، بدون TLS spoof می‌کنه)</label>
+      <label for="tlsEnabled">فعال بودن TLS (اگه خاموش باشه، بدون TLS spoof می‌کنه)</label>
     </div>
 
     <div class="checkbox-row">
       <input type="checkbox" id="fragmentHello">
-      <label for="fragmentHello" style="margin:0">Fragment کردن ClientHello (تجربی)</label>
+      <label for="fragmentHello">Fragment کردن ClientHello (تجربی)</label>
     </div>
 
     <div style="margin-top:14px">
@@ -172,7 +206,7 @@
         <input id="newDomain" placeholder="مثلاً: www.wikipedia.org">
         <button class="ghost" onclick="addDomain()" style="margin:0">+ افزودن دامنه</button>
       </div>
-      <div class="hint">دامنه‌ها اینجا فقط روی سرور مجاز می‌شن. یکی رو از لیست پایین انتخاب کن.</div>
+      <div class="hint">دامنه‌ها اینجا فقط روی سرور مجاز می‌شن.</div>
     </div>
   </div>
 
@@ -213,24 +247,32 @@
   <!-- خروجی -->
   <div class="card" id="result" style="display:none">
     <div><span class="badge">خروجی</span></div>
+
     <label style="margin-top:12px">کانفیگ Spoof شده</label>
     <div id="out" class="out"></div>
 
     <div class="actions">
-      <button class="ghost" onclick="copyOut()">کپی</button>
+      <button class="ghost" onclick="copyOut()">کپی کانفیگ</button>
+      <button class="ghost" onclick="copyFp()">کپی اثر انگشت</button>
       <button class="ghost" onclick="showQR()">نمایش QR</button>
     </div>
 
     <div id="qr"></div>
 
+    <div id="fpSection" style="margin-top:14px; display:none">
+      <label>پین اثر انگشت گواهی (pinnedPeerCertSha256)</label>
+      <div id="fpBox" class="fp-box"></div>
+    </div>
+
     <div class="note" id="note"></div>
   </div>
 </div>
 
+<div class="toast" id="toast"></div>
+
 <script>
 const $ = id => document.getElementById(id);
 
-// پیش‌فرض‌ها
 const DEFAULT_DOMAINS = [
   'chatgpt.com',
   'www.microsoft.com',
@@ -249,7 +291,16 @@ let state = {
   allowedUuids: [],
 };
 
-// ============ بارگذاری state از سرور ============
+// ============ Toast ============
+function toast(msg) {
+  const t = $('toast');
+  t.textContent = msg;
+  t.classList.add('show');
+  clearTimeout(window.__toastTimer);
+  window.__toastTimer = setTimeout(() => t.classList.remove('show'), 1800);
+}
+
+// ============ بارگذاری state ============
 async function loadState() {
   try {
     const r = await fetch('/api/state');
@@ -260,14 +311,14 @@ async function loadState() {
   }
   renderDomains();
   renderFakeSelect();
-  $('fakeResponse').checked = state.fakeResponse;
-  $('tlsEnabled').checked = state.tlsEnabled;
-  $('fragmentHello').checked = state.fragmentHello;
+  $('fakeResponse').checked = !!state.fakeResponse;
+  $('tlsEnabled').checked = !!state.tlsEnabled;
+  $('fragmentHello').checked = !!state.fragmentHello;
   $('wsPath').value = state.defaultWsPath || '/ws';
   $('publicHost').value = window.location.hostname;
 }
 
-// ============ ذخیره state روی سرور ============
+// ============ ذخیره state ============
 async function saveState(patch) {
   Object.assign(state, patch);
   try {
@@ -279,7 +330,7 @@ async function saveState(patch) {
   } catch (e) {}
 }
 
-// ============ رندر لیست دامنه‌ها ============
+// ============ رندر دامنه‌ها ============
 function renderDomains() {
   const list = $('domainList');
   list.innerHTML = '';
@@ -310,7 +361,7 @@ function renderFakeSelect() {
 function addDomain() {
   const v = $('newDomain').value.trim().toLowerCase();
   if (!v) return;
-  if (state.fakeDomains.includes(v)) return;
+  if (state.fakeDomains.includes(v)) return toast('قبلاً اضافه شده');
   state.fakeDomains.push(v);
   $('newDomain').value = '';
   renderDomains();
@@ -330,10 +381,11 @@ $('fakeResponse').onchange = e => saveState({ fakeResponse: e.target.checked });
 $('tlsEnabled').onchange = e => saveState({ tlsEnabled: e.target.checked });
 $('fragmentHello').onchange = e => saveState({ fragmentHello: e.target.checked });
 
-// ============ دکمه جعل ============
+// ============ جعل ============
 $('go').onclick = async () => {
   $('error').textContent = '';
   $('result').style.display = 'none';
+  $('fpSection').style.display = 'none';
   $('qr').innerHTML = '';
 
   const url = $('input').value.trim();
@@ -363,11 +415,27 @@ $('go').onclick = async () => {
     }
 
     $('out').textContent = j.url;
-    $('note').innerHTML = tlsEnabled
-      ? `⚠️ در کلاینت <b>allowInsecure=true</b> را فعال کنید (گواهی TLS خودامضا است). سرور: <b>${publicHost}</b>`
-      : `ℹ️ حالت بدون TLS فعال است.`;
-    $('result').style.display = 'block';
     window.__out = j.url;
+    window.__fp = j.fingerprint || '';
+
+    if (tlsEnabled && j.fingerprint) {
+      $('fpBox').textContent = j.fingerprint;
+      $('fpSection').style.display = 'block';
+      $('note').className = 'note';
+      $('note').innerHTML = `
+        ⚠️ در کلاینت (v2rayNG / NekoBox / Sing-box) باید گواهی را pin کنی.<br>
+        اثر انگشت <code>pinnedPeerCertSha256</code> در کانفیگ قرار داده شده.<br>
+        اگه کلاینت از <code>allowInsecure</code> استفاده می‌کنه، ممکنه نسخه‌های جدید reject کنن — از fingerprint استفاده کن.
+      `;
+    } else if (!tlsEnabled) {
+      $('note').className = 'note ok';
+      $('note').innerHTML = `ℹ️ حالت بدون TLS فعال است. اتصال بدون لایه امن انجام می‌شه.`;
+    } else {
+      $('note').className = 'note';
+      $('note').innerHTML = `⚠️ اثر انگشت گواهی دریافت نشد.`;
+    }
+
+    $('result').style.display = 'block';
   } catch (e) {
     $('error').textContent = e.message;
   } finally {
@@ -376,10 +444,20 @@ $('go').onclick = async () => {
   }
 };
 
+// ============ کپی ============
 function copyOut() {
-  navigator.clipboard.writeText(window.__out || '');
+  if (!window.__out) return;
+  navigator.clipboard.writeText(window.__out);
+  toast('کانفیگ کپی شد');
 }
 
+function copyFp() {
+  if (!window.__fp) return;
+  navigator.clipboard.writeText(window.__fp);
+  toast('اثر انگشت کپی شد');
+}
+
+// ============ QR ============
 function showQR() {
   const url = window.__out || '';
   if (!url) return;
