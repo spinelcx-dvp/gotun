@@ -9,11 +9,13 @@ const fs = require('fs');
 const { extractSNI, isCompleteClientHello } = require('./sni');
 const { parseVlessHeader, isValidUUID } = require('./vless');
 const { parseVlessUrl, buildVlessUrl, buildSpoofedConfig } = require('./config');
-const { relayToUpstream, transparentRelay } = require('./relay');
 const { isFakeDomain, getSpoofContext } = require('./spoof');
 const { getState, updateState } = require('./state');
 
 const PORT = parseInt(process.env.PORT || '3000', 10);
+
+// نقشه‌ی uuid → کانفیگ اصلی (upstream واقعی)
+const uuidToConfig = new Map();
 
 // ==================== Express ====================
 
@@ -41,7 +43,9 @@ app.post('/api/spoof', async (req, res) => {
     if (!publicHost) return res.status(400).json({ ok: false, error: 'publicHost required' });
 
     const st = getState();
-    if (!st.fakeDomains.includes(String(fakeDomain).toLowerCase())) {
+    const fakeLower = String(fakeDomain).toLowerCase();
+
+    if (!st.fakeDomains.includes(fakeLower)) {
       return res.status(400).json({
         ok: false,
         error: `domain not allowed: ${fakeDomain}`,
@@ -54,14 +58,26 @@ app.post('/api/spoof', async (req, res) => {
       return res.status(400).json({ ok: false, error: 'invalid uuid' });
     }
 
+    // ثبت mapping برای relay
+    uuidToConfig.set(original.uuid.toLowerCase(), {
+      host: original.host,
+      port: original.port || 443,
+      sni: original.sni || original.host,
+      path: original.path || '/',
+      hostHeader: original.host_header || original.host,
+      registeredAt: Date.now(),
+    });
+
+    console.log(`[map] uuid=${original.uuid} → ${original.host}:${original.port}`);
+
     const useTls = typeof tlsEnabled === 'boolean' ? tlsEnabled : st.tlsEnabled;
 
-    // ✅ گرفتن گواهی و اثر انگشت
     let pinnedFingerprint = '';
     if (useTls) {
       try {
-        const ctx = await getSpoofContext(String(fakeDomain).toLowerCase());
+        const ctx = await getSpoofContext(fakeLower);
         pinnedFingerprint = ctx.fingerprint || '';
+        console.log(`[spoof] fingerprint for ${fakeLower}: ${pinnedFingerprint}`);
       } catch (e) {
         console.error(`[spoof] cert error:`, e.message);
         return res.status(500).json({ ok: false, error: `cert error: ${e.message}` });
@@ -69,7 +85,7 @@ app.post('/api/spoof', async (req, res) => {
     }
 
     const spoofed = buildSpoofedConfig(original, {
-      fakeDomain: String(fakeDomain).toLowerCase(),
+      fakeDomain: fakeLower,
       publicHost,
       publicPort: 443,
       path: wsPath || original.path || st.defaultWsPath,
@@ -91,7 +107,7 @@ app.post('/api/spoof', async (req, res) => {
 });
 
 app.get('/api/health', (req, res) => {
-  res.json({ ok: true, uptime: process.uptime() });
+  res.json({ ok: true, uptime: process.uptime(), mappings: uuidToConfig.size });
 });
 
 // ==================== HTTP + Raw TCP ====================
@@ -172,11 +188,16 @@ function handleTLSConnection(socket, firstChunk) {
 
     tlsSocket.on('secure', () => {
       console.log(`[tls] handshake OK SNI=${sni}`);
+
       let vlessBuf = Buffer.alloc(0);
-      let upstreamSocket = null;
+      let upstreamTls = null;
+      let piped = false;
 
       const onSecureData = (data) => {
-        if (upstreamSocket) return upstreamSocket.write(data);
+        if (piped && upstreamTls) {
+          upstreamTls.write(data);
+          return;
+        }
 
         vlessBuf = Buffer.concat([vlessBuf, data]);
         const header = parseVlessHeader(vlessBuf);
@@ -193,13 +214,42 @@ function handleTLSConnection(socket, firstChunk) {
           return tlsSocket.destroy();
         }
 
-        console.log(`[vless] ${header.uuid} → ${header.address}:${header.port}`);
+        const mapping = uuidToConfig.get(header.uuid.toLowerCase());
+        if (!mapping) {
+          console.log(`[vless] no mapping for ${header.uuid} — paste config in panel first`);
+          return tlsSocket.destroy();
+        }
 
-        upstreamSocket = relayToUpstream(tlsSocket, header.payload, {
-          host: header.address,
-          port: header.port,
-          tls: false,
-          sni: header.address,
+        const upstreamHost = mapping.host;
+        const upstreamPort = mapping.port || 443;
+        const upstreamSni = mapping.sni || upstreamHost;
+
+        console.log(`[relay] ${header.uuid} → ${upstreamHost}:${upstreamPort} (SNI=${upstreamSni})`);
+
+        upstreamTls = tls.connect({
+          host: upstreamHost,
+          port: upstreamPort,
+          servername: upstreamSni,
+          rejectUnauthorized: false,
+        }, () => {
+          console.log(`[relay] upstream connected`);
+
+          if (header.payload.length) {
+            upstreamTls.write(header.payload);
+          }
+
+          piped = true;
+          upstreamTls.pipe(tlsSocket);
+          tlsSocket.pipe(upstreamTls);
+        });
+
+        upstreamTls.on('error', (e) => {
+          console.error(`[relay] upstream err:`, e.message);
+          try { tlsSocket.destroy(); } catch {}
+        });
+
+        upstreamTls.on('close', () => {
+          try { tlsSocket.destroy(); } catch {}
         });
 
         tlsSocket.removeListener('data', onSecureData);
@@ -213,6 +263,34 @@ function handleTLSConnection(socket, firstChunk) {
 
   socket.on('data', onData);
   socket.on('error', () => {});
+}
+
+// ==================== transparent relay ====================
+
+function transparentRelay(clientSocket, initialData, domain) {
+  const upstream = tls.connect({
+    host: domain,
+    port: 443,
+    servername: domain,
+    rejectUnauthorized: false,
+  }, () => {
+    if (initialData && initialData.length) upstream.write(initialData);
+  });
+
+  const cleanup = () => {
+    try { clientSocket.destroy(); } catch {}
+    try { upstream.destroy(); } catch {}
+  };
+
+  upstream.on('error', cleanup);
+  clientSocket.on('error', cleanup);
+  upstream.on('close', cleanup);
+  clientSocket.on('close', cleanup);
+
+  clientSocket.pipe(upstream);
+  upstream.pipe(clientSocket);
+
+  return upstream;
 }
 
 process.on('uncaughtException', (e) => console.error('[uncaught]', e));
