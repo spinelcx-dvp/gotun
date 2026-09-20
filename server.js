@@ -56,6 +56,18 @@ app.post('/api/spoof', async (req, res) => {
 
     const useTls = typeof tlsEnabled === 'boolean' ? tlsEnabled : st.tlsEnabled;
 
+    // ✅ گرفتن گواهی و اثر انگشت
+    let pinnedFingerprint = '';
+    if (useTls) {
+      try {
+        const ctx = await getSpoofContext(String(fakeDomain).toLowerCase());
+        pinnedFingerprint = ctx.fingerprint || '';
+      } catch (e) {
+        console.error(`[spoof] cert error:`, e.message);
+        return res.status(500).json({ ok: false, error: `cert error: ${e.message}` });
+      }
+    }
+
     const spoofed = buildSpoofedConfig(original, {
       fakeDomain: String(fakeDomain).toLowerCase(),
       publicHost,
@@ -63,16 +75,15 @@ app.post('/api/spoof', async (req, res) => {
       path: wsPath || original.path || st.defaultWsPath,
       uuid: original.uuid,
       tlsEnabled: useTls,
+      pinnedPeerCertSha256: pinnedFingerprint,
     });
-
-    // cert رو pre-warm کن
-    try { await getSpoofContext(String(fakeDomain).toLowerCase()); } catch {}
 
     res.json({
       ok: true,
       original,
       spoofed,
       url: buildVlessUrl(spoofed),
+      fingerprint: pinnedFingerprint,
     });
   } catch (e) {
     res.status(400).json({ ok: false, error: e.message });
