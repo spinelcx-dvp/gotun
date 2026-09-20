@@ -46,26 +46,63 @@ function fetchCertFromDomain(domain) {
 }
 
 function generateSelfSigned(domain) {
-  const tmp = path.join('/tmp', `cert-${crypto.randomBytes(4).toString('hex')}`);
+  const base = path.join('/tmp', `cert-${crypto.randomBytes(6).toString('hex')}`);
+  const keyPath = `${base}.key`;
+  const crtPath = `${base}.crt`;
+  const cnfPath = `${base}.cnf`;
+
+  const cnf = `[req]
+distinguished_name = req_distinguished_name
+x509_extensions = v3_req
+prompt = no
+
+[req_distinguished_name]
+CN = ${domain}
+
+[v3_req]
+subjectAltName = @alt_names
+
+[alt_names]
+DNS.1 = ${domain}
+`;
+
   try {
+    fs.writeFileSync(cnfPath, cnf);
+
     execSync(
       `openssl req -x509 -newkey rsa:2048 -nodes ` +
-      `-keyout ${tmp}.key -out ${tmp}.crt ` +
-      `-days 365 -subj "/CN=${domain}" ` +
-      `-addext "subjectAltName=DNS:${domain}"`,
-      { stdio: 'ignore' }
+      `-keyout ${keyPath} -out ${crtPath} ` +
+      `-days 365 -config ${cnfPath}`,
+      { stdio: 'pipe' }
     );
-    const key = fs.readFileSync(`${tmp}.key`, 'utf8');
-    const cert = fs.readFileSync(`${tmp}.crt`, 'utf8');
 
-    // ✅ محاسبه اثر انگشت SHA256 (فرمت hex بدون دو نقطه)
-    const certDer = fs.readFileSync(`${tmp}.crt`);
-    const fingerprint = crypto.createHash('sha256').update(certDer).digest('hex');
+    const key = fs.readFileSync(keyPath, 'utf8');
+    const certPem = fs.readFileSync(crtPath, 'utf8');
 
-    fs.unlinkSync(`${tmp}.key`);
-    fs.unlinkSync(`${tmp}.crt`);
-    return { key, cert, fingerprint };
+    const fpOut = execSync(
+      `openssl x509 -in ${crtPath} -noout -fingerprint -sha256`,
+      { encoding: 'utf8' }
+    ).trim();
+
+    let fingerprint = '';
+    const eqIdx = fpOut.indexOf('=');
+    if (eqIdx >= 0) {
+      fingerprint = fpOut.slice(eqIdx + 1).replace(/:/g, '').toLowerCase();
+    }
+
+    if (!fingerprint || !/^[0-9a-f]+$/.test(fingerprint)) {
+      throw new Error('fingerprint extraction failed: ' + fpOut);
+    }
+
+    fs.unlinkSync(keyPath);
+    fs.unlinkSync(crtPath);
+    fs.unlinkSync(cnfPath);
+
+    return { key, cert: certPem, fingerprint };
   } catch (e) {
+    try { fs.unlinkSync(keyPath); } catch {}
+    try { fs.unlinkSync(crtPath); } catch {}
+    try { fs.unlinkSync(cnfPath); } catch {}
     throw new Error(`self-signed failed: ${e.message}`);
   }
 }
@@ -83,7 +120,7 @@ async function getCert(domain) {
   const result = {
     key: self.key,
     cert: self.cert,
-    fingerprint: self.fingerprint, // ✅ اثر انگشت
+    fingerprint: self.fingerprint,
     realChain: realChain ? realChain.chain : null,
     domain,
     fetchedAt: Date.now(),
